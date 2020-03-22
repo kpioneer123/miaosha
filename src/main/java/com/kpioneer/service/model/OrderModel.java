@@ -2,6 +2,7 @@ package com.kpioneer.service.model;
 
 import lombok.Data;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 
 /**
@@ -9,7 +10,7 @@ import java.math.BigDecimal;
  */
 //用户下单的交易模型
 @Data
-public class OrderModel {
+public class OrderModel implements Serializable {
     //2018102100012828
     private String id;
 

@@ -7,11 +7,14 @@ import com.kpioneer.response.CommonReturnType;
 import com.kpioneer.service.ItemService;
 import com.kpioneer.service.model.ItemModel;
 import org.joda.time.format.DateTimeFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -23,10 +26,11 @@ import java.util.stream.Collectors;
 @RequestMapping("/item")
 @CrossOrigin(origins = {"*"},allowCredentials = "true")
 public class ItemController extends BaseController {
-
+    private static final Logger LOG = LoggerFactory.getLogger(ItemController.class);
     @Autowired
     private ItemService itemService;
-
+    @Autowired
+    private HttpServletRequest httpServletRequest;
     //创建商品的controller
     @RequestMapping(value = "/create",method = {RequestMethod.POST},consumes={CONTENT_TYPE_FORMED})
     @ResponseBody
@@ -65,6 +69,7 @@ public class ItemController extends BaseController {
     @RequestMapping(value = "/list",method = {RequestMethod.GET})
     @ResponseBody
     public CommonReturnType getItemList(){
+        //LOG.error("list session id={}",httpServletRequest.getSession().getId());
         List<ItemModel> itemModelList = itemService.getItemList();
 
         //使用stream apiJ将list内的itemModel转化为ITEMVO;

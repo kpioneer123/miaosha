@@ -1,16 +1,8 @@
 package com.kpioneer.controller;
 
-import com.kpioneer.error.BusinessException;
-import com.kpioneer.error.EmBusinessError;
-import com.kpioneer.response.CommonReturnType;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.ResponseStatus;
-
-import javax.servlet.http.HttpServletRequest;
-import java.util.HashMap;
-import java.util.Map;
+import org.springframework.context.annotation.Bean;
+import org.springframework.session.web.http.CookieSerializer;
+import org.springframework.session.web.http.DefaultCookieSerializer;
 
 /**
  * @author xionghu
@@ -18,8 +10,27 @@ import java.util.Map;
  * @desc
  */
 public class BaseController {
+    public static final String CONTENT_TYPE_FORMED = "application/x-www-form-urlencoded";
 
-//    public static final String CONTENT_TYPE_FORMED="application/x-www-form-urlencoded";
+    /**
+     * 因为服务端返回给客户端的set-cookie中带有samesite=lax，
+     * 这就是问题的根源，它表示不能携带cookie进行跨域post访问，
+     *    然而我们是需要携带cookie的
+     *
+     * @return
+     */
+    @Bean
+    public CookieSerializer httpSessionIdResolver() {
+        DefaultCookieSerializer cookieSerializer = new DefaultCookieSerializer();
+
+        cookieSerializer.setCookieName("SESSION");
+
+        cookieSerializer.setUseHttpOnlyCookie(false);
+
+        cookieSerializer.setSameSite(null);
+
+        return cookieSerializer;
+    }
 //
 //
 //    @ExceptionHandler(Exception.class)

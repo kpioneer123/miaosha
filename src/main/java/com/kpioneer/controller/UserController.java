@@ -8,19 +8,23 @@ import com.kpioneer.response.CommonReturnType;
 import com.kpioneer.service.UserService;
 import com.kpioneer.service.model.UserModel;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import sun.misc.BASE64Encoder;
 
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Random;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author xionghu
@@ -34,19 +38,21 @@ import java.util.Random;
 public class UserController extends BaseController {
 
 
+    private static final Logger LOG = LoggerFactory.getLogger(ItemController.class);
     @Autowired
     private UserService userService;
-
     @Autowired
     private HttpServletRequest httpServletRequest;
 
-
+    @Autowired
+    private RedisTemplate redisTemplate;
 
     //用户登陆接口
     @RequestMapping(value = "/login", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
     @ResponseBody
     public CommonReturnType login(@RequestParam(name = "telphone") String telphone,
                                   @RequestParam(name = "password") String password) throws BusinessException, UnsupportedEncodingException, NoSuchAlgorithmException {
+
 
         //入参校验
         if (StringUtils.isEmpty(telphone) ||
@@ -56,11 +62,26 @@ public class UserController extends BaseController {
 
         //用户登陆服务,用来校验用户登陆是否合法
         UserModel userModel = userService.validateLogin(telphone, this.EncodeByMd5(password));
-        //将登陆凭证加入到用户登陆成功的session内
-        this.httpServletRequest.getSession().setAttribute("IS_LOGIN", true);
-        this.httpServletRequest.getSession().setAttribute("LOGIN_USER", userModel);
+        /**
+         *
+         * 将登陆凭证加入到用户登陆成功的session内
+         *
+         * 修改成若用户登录验证成功后，将对应的登录信息和登录凭证一起存入redis中
+         *
+         * 生成登录凭证token，UUID
+         */
+        String uuidToken = UUID.randomUUID().toString().replace("-","");
 
-        return CommonReturnType.create(null);
+
+        /**
+         * 建议token和用户登录态之间的联系
+         */
+        redisTemplate.opsForValue().set(uuidToken,userModel,1, TimeUnit.HOURS);
+
+//        this.httpServletRequest.getSession().setAttribute("IS_LOGIN", true);
+//        this.httpServletRequest.getSession().setAttribute("LOGIN_USER", userModel);
+
+        return CommonReturnType.create(uuidToken);
     }
 
     //用户注册接口
