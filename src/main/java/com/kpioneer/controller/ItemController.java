@@ -5,18 +5,21 @@ import com.kpioneer.controller.viewobject.ItemVO;
 import com.kpioneer.error.BusinessException;
 import com.kpioneer.response.CommonReturnType;
 import com.kpioneer.service.ItemService;
+import com.kpioneer.service.cahce.CacheService;
 import com.kpioneer.service.model.ItemModel;
 import org.joda.time.format.DateTimeFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -24,21 +27,27 @@ import java.util.stream.Collectors;
  */
 @Controller("/item")
 @RequestMapping("/item")
-@CrossOrigin(origins = {"*"},allowCredentials = "true")
+@CrossOrigin(origins = {"*"}, allowCredentials = "true")
 public class ItemController extends BaseController {
     private static final Logger LOG = LoggerFactory.getLogger(ItemController.class);
     @Autowired
     private ItemService itemService;
     @Autowired
     private HttpServletRequest httpServletRequest;
+    @Autowired
+    private RedisTemplate redisTemplate;
+    @Autowired
+    private CacheService cacheService;
+
+
     //创建商品的controller
-    @RequestMapping(value = "/create",method = {RequestMethod.POST},consumes={CONTENT_TYPE_FORMED})
+    @RequestMapping(value = "/create", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
     @ResponseBody
-    public CommonReturnType createItem(@RequestParam(name = "title")String title,
-                                       @RequestParam(name = "description")String description,
-                                       @RequestParam(name = "price")BigDecimal price,
-                                       @RequestParam(name = "stock")Integer stock,
-                                       @RequestParam(name = "imgUrl")String imgUrl) throws BusinessException {
+    public CommonReturnType createItem(@RequestParam(name = "title") String title,
+                                       @RequestParam(name = "description") String description,
+                                       @RequestParam(name = "price") BigDecimal price,
+                                       @RequestParam(name = "stock") Integer stock,
+                                       @RequestParam(name = "imgUrl") String imgUrl) throws BusinessException {
         //封装service请求用来创建商品
         ItemModel itemModel = new ItemModel();
         itemModel.setTitle(title);
@@ -54,26 +63,40 @@ public class ItemController extends BaseController {
     }
 
     //商品详情页浏览
-    @RequestMapping(value = "/get",method = {RequestMethod.GET})
+    @RequestMapping(value = "/get", method = {RequestMethod.GET})
     @ResponseBody
-    public CommonReturnType getItem(@RequestParam(name = "id")Integer id){
-        ItemModel itemModel = itemService.getItemById(id);
+    public CommonReturnType getItem(@RequestParam(name = "id") Integer id) {
+        ItemModel itemModel = null;
 
+        //先取本地缓存
+        itemModel = (ItemModel) cacheService.getFromCommonCache("item_" + id);
+
+        if (itemModel == null) {
+            //根据商品的id到redis内获取
+            itemModel = (ItemModel) redisTemplate.opsForValue().get("item_" + id);
+            //若redis内不存在对应的itemModel,则访问下游service
+            if (itemModel == null) {
+                itemModel = itemService.getItemById(id);
+                //设置itemModel到redis内
+                redisTemplate.opsForValue().set("item_" + id, itemModel, 10, TimeUnit.MINUTES);
+            }
+            //填充本地缓存
+            cacheService.setCommonCache("item_" + id, itemModel);
+        }
         ItemVO itemVO = convertVOFromModel(itemModel);
-
         return CommonReturnType.create(itemVO);
 
     }
 
     //商品列表页面浏览
-    @RequestMapping(value = "/list",method = {RequestMethod.GET})
+    @RequestMapping(value = "/list", method = {RequestMethod.GET})
     @ResponseBody
-    public CommonReturnType getItemList(){
+    public CommonReturnType getItemList() {
         //LOG.error("list session id={}",httpServletRequest.getSession().getId());
         List<ItemModel> itemModelList = itemService.getItemList();
 
         //使用stream apiJ将list内的itemModel转化为ITEMVO;
-        List<ItemVO> itemVOList =  itemModelList.stream().map(itemModel -> {
+        List<ItemVO> itemVOList = itemModelList.stream().map(itemModel -> {
             ItemVO itemVO = this.convertVOFromModel(itemModel);
             return itemVO;
         }).collect(Collectors.toList());
@@ -81,14 +104,13 @@ public class ItemController extends BaseController {
     }
 
 
-
-    private ItemVO convertVOFromModel(ItemModel itemModel){
-        if(itemModel == null){
+    private ItemVO convertVOFromModel(ItemModel itemModel) {
+        if (itemModel == null) {
             return null;
         }
         ItemVO itemVO = new ItemVO();
-        BeanUtils.copyProperties(itemModel,itemVO);
-        if(itemModel.getPromoModel() != null){
+        BeanUtils.copyProperties(itemModel, itemVO);
+        if (itemModel.getPromoModel() != null) {
             /**
              * 有正在进行或即将进行的秒杀活动
              */
@@ -96,7 +118,7 @@ public class ItemController extends BaseController {
             itemVO.setPromoId(itemModel.getPromoModel().getId());
             itemVO.setStartDate(itemModel.getPromoModel().getStartDate().toString(DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss")));
             itemVO.setPromoPrice(itemModel.getPromoModel().getPromoItemPrice());
-        }else{
+        } else {
             itemVO.setPromoStatus(0);
         }
         return itemVO;
